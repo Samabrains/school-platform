@@ -4,15 +4,21 @@ import {
   finishDeployment,
   rolloutTenantViaGit,
 } from "./rollout";
+import { resolveTenant } from "./tenants";
 
-export async function redeployTenant(env: Env, tenantId: string) {
+export async function redeployTenant(env: Env, tenantIdOrSlug: string) {
+  const tenant = await resolveTenant(env, tenantIdOrSlug);
+  if (!tenant) {
+    throw new Error(`Tenant not found: ${tenantIdOrSlug}`);
+  }
+
   const gitSha = env.TEMPLATE_GIT_SHA?.trim() || "ops-manual";
   const deployment = await createDeployment(env, gitSha, "ops-redeploy");
 
   const result = await rolloutTenantViaGit(
     env,
     deployment.id,
-    tenantId,
+    tenant.id,
     gitSha,
     600_000
   );

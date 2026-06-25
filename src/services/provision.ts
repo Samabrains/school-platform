@@ -191,29 +191,32 @@ export async function configurePagesProjectProduction(
     if (value) envVars[key] = { type: "plain_text", value };
   }
 
+  const deploymentConfig = {
+    compatibility_date: "2024-09-23",
+    compatibility_flags: ["nodejs_compat"],
+    usage_model: "standard",
+    d1_databases: {
+      DB: { id: config.d1DatabaseId },
+    },
+    r2_buckets: {
+      STORAGE: { name: config.r2Bucket },
+      BACKUPS_STORAGE: { name: config.r2BackupsBucket },
+    },
+    vectorize_bindings: {
+      VECTORIZE_INDEX: { index_name: config.vectorizeIndex },
+    },
+    ai_bindings: {
+      AI: {},
+    },
+    env_vars: envVars,
+  };
+
   await cfFetch(env, `/pages/projects/${projectName}`, {
     method: "PATCH",
     body: JSON.stringify({
       deployment_configs: {
-        production: {
-          compatibility_date: "2024-09-23",
-          compatibility_flags: ["nodejs_compat"],
-          usage_model: "standard",
-          d1_databases: {
-            DB: { id: config.d1DatabaseId },
-          },
-          r2_buckets: {
-            STORAGE: { name: config.r2Bucket },
-            BACKUPS_STORAGE: { name: config.r2BackupsBucket },
-          },
-          vectorize_bindings: {
-            VECTORIZE_INDEX: { index_name: config.vectorizeIndex },
-          },
-          ai_bindings: {
-            AI: {},
-          },
-          env_vars: envVars,
-        },
+        production: deploymentConfig,
+        preview: deploymentConfig,
       },
     }),
   });

@@ -590,10 +590,10 @@ app.post("/api/ops/tenants/:id/health", async (c) => {
   if (denied) return denied;
 
   const tenant = await c.env.DB.prepare(
-    "SELECT production_url, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+    "SELECT id, production_url, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
   )
     .bind(c.req.param("id"), c.req.param("id"))
-    .first<{ production_url: string; slug: string }>();
+    .first<{ id: string; production_url: string; slug: string }>();
 
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
 
@@ -601,6 +601,7 @@ app.post("/api/ops/tenants/:id/health", async (c) => {
     await checkTenantHealth(tenant.production_url);
     await logOpsAction(c.env, {
       action: "tenant.health_ok",
+      tenantId: tenant.id,
       tenantSlug: tenant.slug,
     });
     return c.json({ ok: true });
@@ -608,6 +609,7 @@ app.post("/api/ops/tenants/:id/health", async (c) => {
     const message = error instanceof Error ? error.message : String(error);
     await logOpsAction(c.env, {
       action: "tenant.health_fail",
+      tenantId: tenant.id,
       tenantSlug: tenant.slug,
       detail: message,
     });

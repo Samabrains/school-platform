@@ -2,6 +2,7 @@ import type { Env, Tenant } from "../types";
 import { applyTenantPagesConfig } from "./provision";
 import { applyTenantD1Migrations } from "./tenant-d1";
 import { tenantPublicUrl } from "./tenant-url";
+import { resolveTenant } from "./tenants";
 import {
   checkTenantHealth,
   triggerPagesGitDeploy,
@@ -93,15 +94,11 @@ export async function getActiveTenantsForRollout(env: Env) {
 }
 
 /** Migrations + Pages bindings before a CI artifact upload or git redeploy. */
-export async function prepareTenantRollout(env: Env, tenantId: string) {
-  const tenant = await env.DB.prepare(
-    "SELECT * FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
-  )
-    .bind(tenantId, tenantId)
-    .first<Tenant>();
+export async function prepareTenantRollout(env: Env, tenantIdOrSlug: string) {
+  const tenant = await resolveTenant(env, tenantIdOrSlug);
 
   if (!tenant?.d1_database_id) {
-    throw new Error(`Tenant ${tenantId} not found or missing D1`);
+    throw new Error(`Tenant ${tenantIdOrSlug} not found or missing D1`);
   }
 
   await applyTenantD1Migrations(env, tenant.d1_database_id);
@@ -123,22 +120,28 @@ export async function prepareTenantRollout(env: Env, tenantId: string) {
 export async function rolloutTenantViaGit(
   env: Env,
   deploymentId: string,
-  tenantId: string,
+  tenantIdOrSlug: string,
   gitSha: string,
   maxDeployWaitMs = 600_000
 ) {
+  const tenant = await resolveTenant(env, tenantIdOrSlug);
+  if (!tenant) {
+    throw new Error(`Tenant not found: ${tenantIdOrSlug}`);
+  }
+  const tenantId = tenant.id;
+
   await recordTenantDeployment(env, deploymentId, tenantId, {
     status: "running",
   });
 
   try {
-    const { tenant } = await prepareTenantRollout(env, tenantId);
-    const slug = tenant.pages_project_name || tenant.slug;
+    const { tenant: refreshed } = await prepareTenantRollout(env, tenantId);
+    const slug = refreshed.pages_project_name || refreshed.slug;
 
     const deployment = await triggerPagesGitDeploy(env, slug);
     await waitForPagesDeployment(env, slug, deployment.id, maxDeployWaitMs);
-    await applyTenantPagesConfig(env, tenant.id);
-    await checkTenantHealth(tenant.production_url);
+    await applyTenantPagesConfig(env, tenantId);
+    await checkTenantHealth(refreshed.production_url);
 
     await recordTenantDeployment(env, deploymentId, tenantId, {
       status: "completed",
