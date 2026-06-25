@@ -22,16 +22,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Checkout core-school-template (for migration bundle)
-        uses: actions/checkout@v4
-        with:
-          repository: Samabrains/core-school-template
-          path: core-school-template
-          token: ${{ secrets.GH_PAT || github.token }}
-
-      - name: Bundle tenant D1 migrations
-        run: TEMPLATE_ROOT=./core-school-template node scripts/bundle-tenant-migrations.mjs
-
       - name: Apply platform D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
