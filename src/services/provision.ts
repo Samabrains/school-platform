@@ -1,5 +1,6 @@
 import type { Env } from "../types";
-import { applyTenantD1Migrations, pagesDevUrl } from "./tenant-d1";
+import { applyTenantD1Migrations } from "./tenant-d1";
+import { tenantPublicUrl } from "./tenant-url";
 import {
   bootstrapTenantSite,
   checkTenantHealth,
@@ -108,6 +109,19 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
   const trialEnds = Number(refreshed.trial_ends_at);
   const plan = String(refreshed.plan);
   const isStarter = plan === "starter";
+  const tagline =
+    refreshed.tagline != null && String(refreshed.tagline).trim()
+      ? String(refreshed.tagline)
+      : "Excellence in Every Classroom";
+  const primaryColor =
+    refreshed.primary_color != null && String(refreshed.primary_color).trim()
+      ? String(refreshed.primary_color)
+      : "#1E3A8A";
+  const secondaryColor =
+    refreshed.secondary_color != null &&
+    String(refreshed.secondary_color).trim()
+      ? String(refreshed.secondary_color)
+      : "#F59E0B";
 
   let cronSecret = refreshed.cron_secret
     ? String(refreshed.cron_secret)
@@ -134,6 +148,7 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
     },
     plainText: {
       ADMIN_EMAIL: String(refreshed.admin_email),
+      NEXT_PUBLIC_SCHOOL_EMAIL: String(refreshed.admin_email),
       NEXT_PUBLIC_ENABLE_ADMIN_PIN: "false",
       PLATFORM_TENANT_ID: tenantId,
       PLATFORM_API_URL: env.PLATFORM_PUBLIC_URL ?? "",
@@ -144,9 +159,9 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
       CONTACT_EMAIL_TO: String(refreshed.admin_email),
       BREVO_SENDER_EMAIL: env.BREVO_SENDER_EMAIL ?? "noreply@samabrains.com",
       NEXT_PUBLIC_SCHOOL_NAME: String(refreshed.school_name),
-      NEXT_PUBLIC_TAGLINE: "Excellence in Every Classroom",
-      NEXT_PUBLIC_PRIMARY_COLOR: "#1E3A8A",
-      NEXT_PUBLIC_SECONDARY_COLOR: "#F59E0B",
+      NEXT_PUBLIC_TAGLINE: tagline,
+      NEXT_PUBLIC_PRIMARY_COLOR: primaryColor,
+      NEXT_PUBLIC_SECONDARY_COLOR: secondaryColor,
       NEXT_PUBLIC_ENABLE_CHATBOT: "true",
       NEXT_PUBLIC_ENABLE_ALUMNI_PORTAL: isStarter ? "false" : "true",
       NEXT_PUBLIC_ENABLE_CAREERS: isStarter ? "false" : "true",
@@ -290,7 +305,7 @@ export async function runProvisioningPipeline(
 
       if (step === "pages") {
         const project = await ensureGitConnectedPagesProject(env, slug);
-        const url = pagesDevUrl(project.subdomain ?? slug);
+        const url = tenantPublicUrl(env, project.subdomain ?? slug);
         await env.DB.prepare(
           "UPDATE tenants SET pages_project_name = ?, production_url = ? WHERE id = ?"
         )
@@ -347,13 +362,13 @@ export async function runProvisioningPipeline(
           throw new Error("Missing cron_secret for bootstrap");
         }
         await bootstrapTenantSite(
-          pagesDevUrl(slug),
+          tenantPublicUrl(env, slug),
           refreshed.cron_secret
         );
       }
 
       if (step === "health") {
-        await checkTenantHealth(pagesDevUrl(slug));
+        await checkTenantHealth(tenantPublicUrl(env, slug));
       }
 
       await upsertJob(env, tenantId, step, "done");
@@ -386,7 +401,7 @@ export async function tryFinishProvisioning(
   if (!tenant || tenant.status !== "provisioning") return false;
 
   const slug = String(tenant.slug);
-  const fixedUrl = pagesDevUrl(slug);
+  const fixedUrl = tenantPublicUrl(env, slug);
   if (tenant.production_url !== fixedUrl) {
     await env.DB.prepare(
       "UPDATE tenants SET production_url = ? WHERE id = ?"
@@ -453,7 +468,7 @@ export async function tryFinishProvisioning(
 
     try {
       await bootstrapTenantSite(
-        pagesDevUrl(slug),
+        tenantPublicUrl(env, slug),
         refreshed.cron_secret
       );
       await upsertJob(env, tenantId, "bootstrap", "done");
@@ -473,7 +488,7 @@ export async function tryFinishProvisioning(
   if (healthJob?.status !== "done") {
     await upsertJob(env, tenantId, "health", "running");
     try {
-      await checkTenantHealth(pagesDevUrl(slug));
+      await checkTenantHealth(tenantPublicUrl(env, slug));
       await upsertJob(env, tenantId, "health", "done");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Health check failed";

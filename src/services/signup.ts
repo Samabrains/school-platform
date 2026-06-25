@@ -6,11 +6,33 @@ import {
   tryFinishProvisioning,
 } from "../services/provision";
 import { getPlan } from "../config/plans";
-import { pagesDevUrl } from "./tenant-d1";
+import { tenantPublicUrl } from "./tenant-url";
+import { checkSignupRateLimit } from "./rate-limit";
 import { createAdminMagicLinkToken, buildMagicLinkUrl } from "../services/magic-link";
 import { sendPlatformEmail } from "../services/email";
 
 const TRIAL_SECONDS = 30 * 24 * 60 * 60;
+const DEFAULT_TAGLINE = "Excellence in Every Classroom";
+const DEFAULT_PRIMARY = "#1E3A8A";
+const DEFAULT_SECONDARY = "#F59E0B";
+
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+
+function normalizeColor(value: string | undefined, fallback: string) {
+  const v = value?.trim();
+  return v && HEX_COLOR.test(v) ? v : fallback;
+}
+
+export async function checkSlugAvailable(env: Env, slugInput: string) {
+  const slug = normalizeSlug(slugInput);
+  if (!slug || !isValidSlug(slug)) {
+    return { available: false, slug, error: "Invalid site address" };
+  }
+  const existing = await env.DB.prepare("SELECT id FROM tenants WHERE slug = ?")
+    .bind(slug)
+    .first();
+  return { available: !existing, slug };
+}
 
 export async function createSignupTenant(
   env: Env,
@@ -20,8 +42,23 @@ export async function createSignupTenant(
     admin_email: string;
     admin_phone?: string;
     plan?: string;
-  }
+    tagline?: string;
+    primary_color?: string;
+    secondary_color?: string;
+    accept_terms?: boolean;
+  },
+  clientIp?: string
 ) {
+  if (clientIp) {
+    const limit = await checkSignupRateLimit(env, clientIp);
+    if (!limit.allowed) {
+      return { error: limit.error, status: 429 as const };
+    }
+  }
+
+  if (!body.accept_terms) {
+    return { error: "You must accept the Terms of Service", status: 400 as const };
+  }
   const slug = normalizeSlug(body.slug?.trim() || body.school_name);
   const plan = body.plan ?? "starter";
 
@@ -51,6 +88,10 @@ export async function createSignupTenant(
 
   const now = Math.floor(Date.now() / 1000);
   const tenantId = `ten_${crypto.randomUUID()}`;
+  const tagline = body.tagline?.trim() || DEFAULT_TAGLINE;
+  const primaryColor = normalizeColor(body.primary_color, DEFAULT_PRIMARY);
+  const secondaryColor = normalizeColor(body.secondary_color, DEFAULT_SECONDARY);
+  const publicUrl = tenantPublicUrl(env, slug);
 
   const tenant: Partial<Tenant> & { admin_phone?: string } = {
     id: tenantId,
@@ -64,8 +105,12 @@ export async function createSignupTenant(
     trial_ends_at: now + TRIAL_SECONDS,
     pesapal_account_number: `ten_${slug}`,
     pages_project_name: slug,
-    production_url: `https://${slug}.pages.dev`,
+    production_url: publicUrl,
     d1_database_id: "",
+    tagline,
+    primary_color: primaryColor,
+    secondary_color: secondaryColor,
+    terms_accepted_at: now,
     created_at: now,
   };
 
@@ -73,8 +118,8 @@ export async function createSignupTenant(
     `INSERT INTO tenants (
       id, slug, school_name, admin_email, admin_phone, status, plan, billing_status,
       trial_ends_at, pesapal_account_number, pages_project_name, production_url,
-      d1_database_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      d1_database_id, tagline, primary_color, secondary_color, terms_accepted_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       tenant.id,
@@ -90,6 +135,10 @@ export async function createSignupTenant(
       tenant.pages_project_name,
       tenant.production_url,
       tenant.d1_database_id,
+      tenant.tagline,
+      tenant.primary_color,
+      tenant.secondary_color,
+      tenant.terms_accepted_at,
       tenant.created_at
     )
     .run();
@@ -112,7 +161,7 @@ export async function sendWelcomeEmail(env: Env, tenantId: string) {
 
   if (alreadySent) return;
 
-  const siteUrl = pagesDevUrl(tenant.slug);
+  const siteUrl = tenantPublicUrl(env, tenant.slug);
   if (tenant.production_url !== siteUrl) {
     await env.DB.prepare("UPDATE tenants SET production_url = ? WHERE id = ?")
       .bind(siteUrl, tenantId)

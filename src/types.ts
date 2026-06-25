@@ -29,6 +29,10 @@ export interface Tenant {
   vectorize_index: string | null;
   custom_domain: string | null;
   cron_secret?: string | null;
+  tagline?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  terms_accepted_at?: number | null;
   created_at: number;
   provisioned_at: number | null;
   suspended_at: number | null;
@@ -54,4 +58,7 @@ export interface Env {
   TEMPLATE_GITHUB_BRANCH?: string;
   TEMPLATE_BUILD_COMMAND?: string;
   TEMPLATE_BUILD_OUTPUT_DIR?: string;
+  TEMPLATE_GIT_SHA?: string;
+  /** e.g. samabrains.com → https://{slug}.samabrains.com */
+  TENANT_BASE_DOMAIN?: string;
 }

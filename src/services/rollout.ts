@@ -1,6 +1,7 @@
 import type { Env, Tenant } from "../types";
 import { applyTenantPagesConfig } from "./provision";
-import { applyTenantD1Migrations, pagesDevUrl } from "./tenant-d1";
+import { applyTenantD1Migrations } from "./tenant-d1";
+import { tenantPublicUrl } from "./tenant-url";
 import {
   checkTenantHealth,
   triggerPagesGitDeploy,
@@ -106,7 +107,7 @@ export async function prepareTenantRollout(env: Env, tenantId: string) {
   await applyTenantD1Migrations(env, tenant.d1_database_id);
   await applyTenantPagesConfig(env, tenant.id);
 
-  const productionUrl = pagesDevUrl(tenant.slug);
+  const productionUrl = tenantPublicUrl(env, tenant.slug);
   if (tenant.production_url !== productionUrl) {
     await env.DB.prepare(
       "UPDATE tenants SET production_url = ? WHERE id = ?"

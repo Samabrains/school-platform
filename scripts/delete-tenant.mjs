@@ -136,6 +136,7 @@ async function main() {
     d1Execute(`DELETE FROM provisioning_jobs WHERE tenant_id='${tenantId}'`);
     d1Execute(`DELETE FROM billing_events WHERE tenant_id='${tenantId}'`);
     d1Execute(`DELETE FROM admin_magic_links WHERE tenant_id='${tenantId}'`);
+    d1Execute(`DELETE FROM notification_log WHERE tenant_id='${tenantId}'`);
     d1Execute(
       `DELETE FROM tenant_deployments WHERE tenant_id='${tenantId}'`
     );

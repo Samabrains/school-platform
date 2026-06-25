@@ -21,6 +21,8 @@ TEMPLATE_GITHUB_REPO = "core-school-template"
 TEMPLATE_GITHUB_BRANCH = "main"
 TEMPLATE_BUILD_COMMAND = "npm ci && npm run build && npm run pages:build"
 TEMPLATE_BUILD_OUTPUT_DIR = ".vercel/output/static"
+# Optional — leave unset until you have DNS for school subdomains (default: {slug}.pages.dev)
+# TENANT_BASE_DOMAIN = "samabrains.com"
 
 [triggers]
 crons = ["0 8 * * *"]

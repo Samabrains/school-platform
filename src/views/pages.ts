@@ -2,6 +2,7 @@ import { formatUgx, PLANS } from "../config/plans";
 import type { Env, Tenant } from "../types";
 
 const NAV_LINKS = [
+  { id: "home", href: "/", label: "Home" },
   { id: "signup", href: "/signup", label: "Sign up" },
   { id: "pricing", href: "/pricing", label: "Pricing" },
   { id: "subscribe", href: "/subscribe", label: "Subscribe" },
@@ -14,12 +15,13 @@ function platformNav(active: string) {
       `<a href="${l.href}" class="nav-link${l.id === active ? " active" : ""}">${l.label}</a>`
   ).join("");
   return `<header class="site-header">
-  <a href="/signup" class="brand">SamaBrains <span>School Platform</span></a>
+  <a href="/" class="brand">SamaBrains <span>School Platform</span></a>
   <nav class="site-nav" aria-label="Main">${links}</nav>
 </header>`;
 }
 
-function pageShell(title: string, active: string, body: string) {
+function pageShell(title: string, active: string, body: string, width?: "wide") {
+  const mainClass = width === "wide" ? "page-main wide" : "page-main";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,7 +32,7 @@ function pageShell(title: string, active: string, body: string) {
 </head>
 <body>
   ${platformNav(active)}
-  <main class="page-main">${body}</main>
+  <main class="${mainClass}">${body}</main>
 </body>
 </html>`;
 }
@@ -46,7 +48,27 @@ const styles = `
   .nav-link:hover { background: #f1f5f9; color: #1e3a8a; }
   .nav-link.active { background: #1e3a8a; color: #fff; }
   .page-main { max-width: 520px; margin: 0 auto; padding: 2rem 1rem 3rem; }
-  .page-main.wide { max-width: 640px; }
+  .page-main.wide { max-width: 720px; }
+  .hero { text-align: center; padding: 1rem 0 2rem; }
+  .hero h1 { font-size: 2rem; line-height: 1.2; }
+  .hero .lead { font-size: 1.05rem; color: #475569; max-width: 36rem; margin: 0.75rem auto 1.5rem; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; }
+  .hero-cta .btn-secondary { background: #fff; color: #1e3a8a; border: 1px solid #cbd5e1; }
+  .features { display: grid; gap: 1rem; margin: 2rem 0; }
+  @media (min-width: 560px) { .features { grid-template-columns: 1fr 1fr; } }
+  .feature { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.25rem; }
+  .feature h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+  .slug-status { font-size: 0.8rem; margin-top: 0.35rem; }
+  .slug-ok { color: #15803d; }
+  .slug-bad { color: #b91c1c; }
+  .color-row { display: flex; gap: 1rem; margin-top: 0.25rem; }
+  .color-row label { flex: 1; margin-top: 0; font-weight: 500; font-size: 0.8rem; }
+  .color-row input[type=color] { height: 2.5rem; padding: 0.15rem; }
+  .legal { font-size: 0.875rem; line-height: 1.6; }
+  .legal h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+  .plan-features { margin: 0.75rem 0 0; padding-left: 1.1rem; font-size: 0.875rem; color: #475569; }
+  .checkbox-label { display: flex; gap: 0.5rem; align-items: flex-start; font-weight: 400; margin-top: 1rem; }
+  .checkbox-label input { width: auto; margin-top: 0.2rem; }
   h1 { font-size: 1.5rem; margin-top: 0; }
   label { display: block; margin-top: 1rem; font-weight: 600; font-size: 0.875rem; }
   input, select { width: 100%; padding: 0.6rem; margin-top: 0.25rem; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; background: #fff; }
@@ -63,6 +85,67 @@ const styles = `
   .failed { color: #b91c1c; }
 `;
 
+export function homePageHtml(_env: Env) {
+  return pageShell(
+    "SamaBrains — School websites in minutes",
+    "home",
+    `<div class="hero">
+  <h1>Your school website, live in minutes</h1>
+  <p class="lead">Beautiful sites with news, parent hub, digital forms, and an AI handbook assistant. 30-day free trial — pay in UGX after.</p>
+  <div class="hero-cta">
+    <a class="btn" href="/signup" style="margin-top:0">Start free trial</a>
+    <a class="btn btn-secondary" href="/pricing" style="margin-top:0">View pricing</a>
+  </div>
+</div>
+<section class="features" aria-label="Features">
+  <article class="feature"><h3>Live in minutes</h3><p class="muted">Sign up and we provision your site, database, and admin access automatically.</p></article>
+  <article class="feature"><h3>Parent hub</h3><p class="muted">Forms, admissions, and secure parent login — no extra plugins.</p></article>
+  <article class="feature"><h3>AI handbook</h3><p class="muted">Parents ask questions; answers come from your school policies.</p></article>
+  <article class="feature"><h3>UGX billing</h3><p class="muted">Subscribe via Pesapal — MTN, Airtel, or card after your trial.</p></article>
+</section>
+<p class="muted" style="text-align:center">Already have a school? <a href="/subscribe">Subscribe or renew</a>.</p>`,
+    "wide"
+  );
+}
+
+export function termsPageHtml(_env: Env) {
+  return pageShell(
+    "Terms of Service — SamaBrains",
+    "signup",
+    `<h1>Terms of Service</h1>
+<div class="legal">
+  <p>By creating a school site on SamaBrains School Platform you agree to use the service for lawful educational purposes.</p>
+  <h2>Trial & billing</h2>
+  <p>New schools receive a 30-day free trial. After the trial, monthly fees apply per your selected plan, billed in UGX via Pesapal unless otherwise agreed.</p>
+  <h2>Your content</h2>
+  <p>You retain ownership of school content you upload. You grant SamaBrains permission to host and display it as part of the service.</p>
+  <h2>Acceptable use</h2>
+  <p>Do not upload unlawful content, malware, or material that infringes others' rights. We may suspend sites that violate these terms.</p>
+  <h2>Contact</h2>
+  <p>Questions: <a href="mailto:support@samabrains.com">support@samabrains.com</a></p>
+</div>`
+  );
+}
+
+export function privacyPageHtml(_env: Env) {
+  return pageShell(
+    "Privacy Policy — SamaBrains",
+    "signup",
+    `<h1>Privacy Policy</h1>
+<div class="legal">
+  <p>We collect school name, admin contact details, and usage data needed to operate your site and billing.</p>
+  <h2>What we store</h2>
+  <p>Account email, phone (optional), site content you provide, and technical logs for security and support.</p>
+  <h2>Email</h2>
+  <p>Transactional email (welcome, billing reminders) is sent via Brevo. We do not sell your data.</p>
+  <h2>Data location</h2>
+  <p>School sites and platform data are hosted on Cloudflare infrastructure.</p>
+  <h2>Contact</h2>
+  <p>Privacy requests: <a href="mailto:support@samabrains.com">support@samabrains.com</a></p>
+</div>`
+  );
+}
+
 export function signupPageHtml(_env: Env) {
   const planOptions = Object.values(PLANS)
     .map(
@@ -77,15 +160,71 @@ export function signupPageHtml(_env: Env) {
     `<h1>Start your 30-day free trial</h1>
   <p class="muted">Your school site goes live in minutes. Billing in UGX via Pesapal after trial.</p>
   <form id="signup-form">
-    <label>School name<input name="school_name" required placeholder="Green Valley Academy" /></label>
-    <label>Site address (optional)<input name="slug" placeholder="green-valley" pattern="[a-z0-9-]+" /><span class="muted"> Short name for your school website</span></label>
+    <label>School name<input name="school_name" id="school_name" required placeholder="Green Valley Academy" /></label>
+    <label>Site address (optional)
+      <input name="slug" id="slug" placeholder="green-valley" pattern="[a-z0-9-]+" autocomplete="off" />
+      <span class="muted"> Short name for your school website</span>
+      <p id="slug-status" class="slug-status muted" hidden></p>
+    </label>
+    <label>Tagline (optional)<input name="tagline" placeholder="Excellence in Every Classroom" maxlength="120" /></label>
+    <label>Brand colors</label>
+    <div class="color-row">
+      <label>Primary<input name="primary_color" type="color" value="#1E3A8A" /></label>
+      <label>Accent<input name="secondary_color" type="color" value="#F59E0B" /></label>
+    </div>
     <label>Admin email<input name="admin_email" type="email" required /></label>
     <label>Phone (+256)<input name="admin_phone" placeholder="+256700000000" /></label>
     <label>Plan<select name="plan">${planOptions}</select></label>
+    <label class="checkbox-label">
+      <input name="accept_terms" type="checkbox" value="yes" required />
+      <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a></span>
+    </label>
     <p id="error" class="error" hidden></p>
     <button type="submit" id="submit">Create my school site</button>
   </form>
   <script>
+    let slugTimer;
+    const slugInput = document.getElementById('slug');
+    const schoolInput = document.getElementById('school_name');
+    const slugStatus = document.getElementById('slug-status');
+
+    function normalizeSlug(s) {
+      return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    }
+
+    async function checkSlug() {
+      const raw = slugInput.value.trim() || schoolInput.value.trim();
+      const slug = normalizeSlug(raw);
+      if (!slug || slug.length < 3) {
+        slugStatus.hidden = true;
+        return;
+      }
+      slugStatus.hidden = false;
+      slugStatus.textContent = 'Checking…';
+      slugStatus.className = 'slug-status muted';
+      try {
+        const res = await fetch('/api/signup/check-slug?slug=' + encodeURIComponent(slug));
+        const data = await res.json();
+        if (data.available) {
+          slugStatus.textContent = data.slug + ' is available';
+          slugStatus.className = 'slug-status slug-ok';
+        } else {
+          slugStatus.textContent = data.error || (data.slug + ' is taken');
+          slugStatus.className = 'slug-status slug-bad';
+        }
+      } catch (_) {
+        slugStatus.hidden = true;
+      }
+    }
+
+    slugInput.addEventListener('input', () => {
+      clearTimeout(slugTimer);
+      slugTimer = setTimeout(checkSlug, 400);
+    });
+    schoolInput.addEventListener('blur', () => {
+      if (!slugInput.value.trim()) checkSlug();
+    });
+
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submit');
@@ -94,8 +233,9 @@ export function signupPageHtml(_env: Env) {
       btn.disabled = true;
       const fd = new FormData(e.target);
       const body = Object.fromEntries(fd.entries());
+      body.accept_terms = fd.get('accept_terms') === 'yes';
       if (body.slug) {
-        body.slug = body.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        body.slug = normalizeSlug(body.slug);
       }
       try {
         const res = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -115,12 +255,18 @@ export function signupPageHtml(_env: Env) {
 export function pricingPageHtml(_env: Env) {
   const cards = Object.values(PLANS)
     .map(
-      (p) => `<article class="plan-card">
+      (p) => {
+        const features = p.features
+          .map((f) => `<li>${f}</li>`)
+          .join("");
+        return `<article class="plan-card">
     <h2>${p.name}</h2>
     <p class="price">${formatUgx(p.monthlyAmountUgx)}<span class="muted"> / month after trial</span></p>
     <p class="muted">30-day free trial · Pay with Pesapal (MTN, Airtel, card)</p>
+    <ul class="plan-features">${features}</ul>
     <a class="btn" href="/signup" style="margin-top:1rem;width:100%;text-align:center">Start free trial</a>
-  </article>`
+  </article>`;
+      }
     )
     .join("");
 
@@ -226,7 +372,7 @@ export function setupPageHtml(
   <style>${styles}</style>
 </head>
 <body>
-  ${platformNav("signup")}
+  ${platformNav("home")}
   <main class="page-main">
   <h1>Setting up ${tenant.school_name}</h1>
   <p class="muted">Status: <strong id="status">${statusLabel}</strong></p>

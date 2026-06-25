@@ -79,6 +79,7 @@ export function opsDashboardHtml(_env: Env) {
     <div class="tabs">
       <button type="button" class="tab active" data-tab="tenants">Tenants</button>
       <button type="button" class="tab" data-tab="deployments">Deployments</button>
+      <button type="button" class="tab" data-tab="audit">Audit log</button>
     </div>
 
     <div id="tab-tenants">
@@ -94,6 +95,7 @@ export function opsDashboardHtml(_env: Env) {
         </select>
         <input type="search" id="search" placeholder="Search slug, name, email…" style="min-width:200px" />
         <button type="button" class="btn" id="refresh-btn">Refresh</button>
+        <button type="button" class="btn btn-sm" id="health-sweep-btn">Health sweep all</button>
       </div>
       <table>
         <thead>
@@ -117,6 +119,15 @@ export function opsDashboardHtml(_env: Env) {
           <tr><th>Commit</th><th>Status</th><th>Tenants</th><th>Started</th></tr>
         </thead>
         <tbody id="deploy-rows"></tbody>
+      </table>
+    </div>
+
+    <div id="tab-audit" class="hidden">
+      <table>
+        <thead>
+          <tr><th>When</th><th>Action</th><th>Tenant</th><th>Detail</th></tr>
+        </thead>
+        <tbody id="audit-rows"></tbody>
       </table>
     </div>
   </div>
@@ -231,10 +242,20 @@ export function opsDashboardHtml(_env: Env) {
         '<div class="actions">' +
           '<button class="btn btn-primary btn-sm" data-act="health">Health check</button>' +
           '<button class="btn btn-sm" data-act="bindings">Re-apply bindings</button>' +
+          '<button class="btn btn-sm" data-act="redeploy">Redeploy site</button>' +
           '<button class="btn btn-sm" data-act="retry">Retry provision</button>' +
           '<button class="btn btn-sm" data-act="activate">Activate</button>' +
           '<button class="btn btn-danger btn-sm" data-act="suspend">Suspend</button>' +
           '<button class="btn btn-sm" data-act="pesapal">Pesapal lookup</button>' +
+          '<button class="btn btn-danger btn-sm" data-act="delete">Delete tenant</button>' +
+        '</div>' +
+        '<div id="delete-panel" class="hidden" style="margin-top:1rem;padding:1rem;border:1px solid #fecaca;border-radius:8px;background:#fef2f2">' +
+          '<p style="margin:0 0 0.5rem;font-size:0.875rem"><strong>Permanent delete</strong> — removes Pages, D1, R2, Vectorize, and all platform records.</p>' +
+          '<label style="font-size:0.8rem">Type <code>' + esc(t.slug) + '</code> to confirm<input id="delete-confirm" style="margin-top:0.35rem" autocomplete="off" /></label>' +
+          '<div style="display:flex;gap:0.5rem;margin-top:0.75rem">' +
+            '<button class="btn btn-danger btn-sm" id="delete-go" type="button">Delete forever</button>' +
+            '<button class="btn btn-sm" id="delete-cancel" type="button">Cancel</button>' +
+          '</div>' +
         '</div>' +
         '<div id="pesapal-result"></div>' +
         '<h3 style="font-size:0.95rem;margin:1rem 0 0.5rem">Provisioning jobs</h3>' +
@@ -258,6 +279,10 @@ export function opsDashboardHtml(_env: Env) {
             } else if (act === 'bindings') {
               await api('/api/ops/tenants/' + slug + '/bindings', { method: 'POST' });
               toast('Bindings applied');
+            } else if (act === 'redeploy') {
+              if (!confirm('Trigger a full git redeploy for this tenant?')) return;
+              const r = await api('/api/ops/tenants/' + slug + '/redeploy', { method: 'POST' });
+              toast('Redeploy started — ' + (r.pages_deployment_id || r.deployment_id));
             } else if (act === 'retry') {
               await api('/api/ops/tenants/' + slug + '/retry', { method: 'POST' });
               toast('Provisioning restarted');
@@ -272,6 +297,9 @@ export function opsDashboardHtml(_env: Env) {
               document.getElementById('pesapal-result').innerHTML =
                 '<pre style="font-size:0.75rem;background:#f1f5f9;padding:0.75rem;border-radius:6px;overflow:auto">' +
                 esc(JSON.stringify(r, null, 2)) + '</pre>';
+            } else if (act === 'delete') {
+              document.getElementById('delete-panel').classList.remove('hidden');
+              return;
             }
             await loadDetail(slug);
             await loadTenants();
@@ -283,7 +311,49 @@ export function opsDashboardHtml(_env: Env) {
           }
         });
       });
+
+      document.getElementById('delete-cancel')?.addEventListener('click', () => {
+        document.getElementById('delete-panel')?.classList.add('hidden');
+        const input = document.getElementById('delete-confirm');
+        if (input) input.value = '';
+      });
+
+      document.getElementById('delete-go')?.addEventListener('click', async () => {
+        const confirmInput = document.getElementById('delete-confirm');
+        const confirmSlug = confirmInput?.value?.trim();
+        if (confirmSlug !== slug) {
+          toast('Type the exact slug to confirm deletion');
+          return;
+        }
+        const btn = document.getElementById('delete-go');
+        btn.disabled = true;
+        try {
+          const r = await api('/api/ops/tenants/' + encodeURIComponent(slug), {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm_slug: confirmSlug }),
+          });
+          toast(r.warnings?.length ? 'Deleted with warnings' : 'Tenant deleted');
+          document.getElementById('detail-panel').classList.add('hidden');
+          await loadTenants();
+          await loadMetrics();
+        } catch (e) {
+          toast(e.message);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
       panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function loadAuditLog() {
+      const { entries } = await api('/api/ops/audit-log?limit=100');
+      document.getElementById('audit-rows').innerHTML = (entries || []).map(e =>
+        '<tr><td>' + fmtDate(e.created_at) + '</td>' +
+        '<td><code>' + esc(e.action) + '</code></td>' +
+        '<td>' + esc(e.tenant_slug || '—') + '</td>' +
+        '<td style="font-size:0.8rem">' + esc(e.detail || '') + '</td></tr>'
+      ).join('') || '<tr><td colspan="4">No audit entries</td></tr>';
     }
 
     async function loadDeployments() {
@@ -308,8 +378,24 @@ export function opsDashboardHtml(_env: Env) {
         const name = tab.dataset.tab;
         document.getElementById('tab-tenants').classList.toggle('hidden', name !== 'tenants');
         document.getElementById('tab-deployments').classList.toggle('hidden', name !== 'deployments');
+        document.getElementById('tab-audit').classList.toggle('hidden', name !== 'audit');
         if (name === 'deployments') await loadDeployments();
+        if (name === 'audit') await loadAuditLog();
       });
+    });
+
+    document.getElementById('health-sweep-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('health-sweep-btn');
+      btn.disabled = true;
+      try {
+        const r = await api('/api/ops/health-sweep', { method: 'POST' });
+        toast('Health sweep: ' + r.healthy + '/' + r.total + ' healthy');
+        if (r.unhealthy) await loadAuditLog();
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     document.getElementById('filter-status').addEventListener('change', loadTenants);

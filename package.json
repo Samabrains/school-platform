@@ -16,6 +16,7 @@
     "tenant:delete": "node scripts/delete-tenant.mjs",
     "provision:verify": "node scripts/verify-git-provision.mjs",
     "tenant:pages": "node scripts/apply-tenant-pages.mjs",
+    "tenant:backfill:lincoln": "node scripts/backfill-lincoln.mjs",
     "tenant:migrations:bundle": "node scripts/bundle-tenant-migrations.mjs",
     "rollout:tenants": "node scripts/rollout-tenants.mjs",
     "connect:git": "node scripts/connect-worker-git.mjs",

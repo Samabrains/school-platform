@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requirePlatformAuth } from "./auth";
 import type { Env, Tenant } from "./types";
-import { createSignupTenant, enqueueProvisioning, getSetupStatus, retryProvisioning } from "./services/signup";
+import { createSignupTenant, checkSlugAvailable, enqueueProvisioning, getSetupStatus, retryProvisioning } from "./services/signup";
 import { getPlan, formatUgx, PLANS } from "./config/plans";
 import {
   submitSubscriptionOrder,
@@ -9,7 +9,7 @@ import {
   isPaymentCompleted,
 } from "./services/pesapal";
 import { runTrialCron } from "./services/trial-cron";
-import { signupPageHtml, subscribePageHtml, setupPageHtml, pricingPageHtml } from "./views/pages";
+import { signupPageHtml, subscribePageHtml, setupPageHtml, pricingPageHtml, homePageHtml, termsPageHtml, privacyPageHtml } from "./views/pages";
 import { opsDashboardHtml } from "./views/ops";
 import {
   getOpsMetrics,
@@ -27,6 +27,11 @@ import {
   rolloutTenantViaGit,
 } from "./services/rollout";
 import { checkTenantHealth } from "./services/pages-git";
+import { deleteTenantCompletely } from "./services/delete-tenant";
+import { logOpsAction, listOpsAuditLog } from "./services/audit";
+import { healthSweepAllTenants } from "./services/health-sweep";
+import { redeployTenant } from "./services/redeploy";
+import { tenantPublicUrl } from "./services/tenant-url";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -39,7 +44,11 @@ app.get("/health", (c) =>
   })
 );
 
-app.get("/", (c) => c.redirect("/signup"));
+app.get("/", (c) => c.html(homePageHtml(c.env)));
+
+app.get("/terms", (c) => c.html(termsPageHtml(c.env)));
+
+app.get("/privacy", (c) => c.html(privacyPageHtml(c.env)));
 
 app.get("/signup", (c) => c.html(signupPageHtml(c.env)));
 
@@ -65,6 +74,12 @@ app.get("/api/plans", (c) =>
   })
 );
 
+app.get("/api/signup/check-slug", async (c) => {
+  const slug = c.req.query("slug") ?? "";
+  const result = await checkSlugAvailable(c.env, slug);
+  return c.json(result);
+});
+
 app.post("/api/signup", async (c) => {
   const body = await c.req.json<{
     school_name: string;
@@ -72,9 +87,18 @@ app.post("/api/signup", async (c) => {
     admin_email: string;
     admin_phone?: string;
     plan?: string;
+    tagline?: string;
+    primary_color?: string;
+    secondary_color?: string;
+    accept_terms?: boolean;
   }>();
 
-  const result = await createSignupTenant(c.env, body);
+  const clientIp =
+    c.req.header("CF-Connecting-IP") ??
+    c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ??
+    "unknown";
+
+  const result = await createSignupTenant(c.env, body, clientIp);
   if ("error" in result && result.error) {
     return c.json({ error: result.error }, result.status);
   }
@@ -329,7 +353,9 @@ app.post("/api/tenants", async (c) => {
     pesapal_order_tracking_id: null,
     template_version: body.template_version ?? null,
     pages_project_name: body.pages_project_name ?? body.slug ?? "",
-    production_url: body.production_url ?? `https://${body.slug}.samabrains.com`,
+    production_url:
+      body.production_url ??
+      (body.slug ? tenantPublicUrl(c.env, body.slug) : ""),
     d1_database_id: body.d1_database_id ?? "",
     r2_bucket: body.r2_bucket ?? null,
     vectorize_index: body.vectorize_index ?? null,
@@ -392,13 +418,26 @@ app.patch("/api/tenants/:id/status", async (c) => {
   const { status } = await c.req.json<{ status: string }>();
   if (!status) return c.json({ error: "status is required" }, { status: 400 });
 
-  const result = await c.env.DB.prepare(
-    "UPDATE tenants SET status = ?, suspended_at = CASE WHEN ? = 'suspended' THEN ? ELSE suspended_at END WHERE id = ? OR slug = ?"
+  const tenant = await c.env.DB.prepare(
+    "SELECT id, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
   )
-    .bind(status, status, Math.floor(Date.now() / 1000), id, id)
+    .bind(id, id)
+    .first<{ id: string; slug: string }>();
+
+  if (!tenant) return c.json({ error: "Tenant not found" }, { status: 404 });
+
+  await c.env.DB.prepare(
+    "UPDATE tenants SET status = ?, suspended_at = CASE WHEN ? = 'suspended' THEN ? ELSE suspended_at END WHERE id = ?"
+  )
+    .bind(status, status, Math.floor(Date.now() / 1000), tenant.id)
     .run();
 
-  if (!result.meta.changes) return c.json({ error: "Tenant not found" }, { status: 404 });
+  await logOpsAction(c.env, {
+    action: `tenant.${status}`,
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+  });
+
   return c.json({ success: true, status });
 });
 
@@ -441,15 +480,84 @@ app.post("/api/ops/tenants/:id/retry", async (c) => {
   const denied = requirePlatformAuth(c);
   if (denied) return denied;
 
+  const id = c.req.param("id");
   const result = await retryProvisioning(
     c.executionCtx,
     c.env,
-    c.req.param("id")
+    id
   );
   if ("error" in result && result.error) {
     return c.json({ error: result.error }, result.status);
   }
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT id, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+  )
+    .bind(id, id)
+    .first<{ id: string; slug: string }>();
+
+  if (tenant) {
+    await logOpsAction(c.env, {
+      action: "tenant.retry_provisioning",
+      tenantId: tenant.id,
+      tenantSlug: tenant.slug,
+    });
+  }
+
   return c.json({ ok: true });
+});
+
+app.post("/api/ops/tenants/:id/redeploy", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const id = c.req.param("id");
+  try {
+    const result = await redeployTenant(c.env, id);
+    const tenant = await c.env.DB.prepare(
+      "SELECT id, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+    )
+      .bind(id, id)
+      .first<{ id: string; slug: string }>();
+
+    if (tenant) {
+      await logOpsAction(c.env, {
+        action: result.ok ? "tenant.redeploy" : "tenant.redeploy_failed",
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        detail: result.error ?? result.pages_deployment_id ?? null,
+      });
+    }
+
+    if (!result.ok) {
+      return c.json({ error: result.error, deployment_id: result.deployment_id }, 500);
+    }
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, 500);
+  }
+});
+
+app.post("/api/ops/health-sweep", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const sweep = await healthSweepAllTenants(c.env);
+  await logOpsAction(c.env, {
+    action: "health_sweep",
+    detail: `${sweep.healthy}/${sweep.total} healthy`,
+  });
+  return c.json(sweep);
+});
+
+app.get("/api/ops/audit-log", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const entries = await listOpsAuditLog(c.env, limit);
+  return c.json({ entries });
 });
 
 app.post("/api/ops/tenants/:id/bindings", async (c) => {
@@ -458,6 +566,18 @@ app.post("/api/ops/tenants/:id/bindings", async (c) => {
 
   try {
     await prepareTenantRollout(c.env, c.req.param("id"));
+    const tenant = await c.env.DB.prepare(
+      "SELECT id, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+    )
+      .bind(c.req.param("id"), c.req.param("id"))
+      .first<{ id: string; slug: string }>();
+    if (tenant) {
+      await logOpsAction(c.env, {
+        action: "tenant.bindings",
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+      });
+    }
     return c.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -479,9 +599,18 @@ app.post("/api/ops/tenants/:id/health", async (c) => {
 
   try {
     await checkTenantHealth(tenant.production_url);
+    await logOpsAction(c.env, {
+      action: "tenant.health_ok",
+      tenantSlug: tenant.slug,
+    });
     return c.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await logOpsAction(c.env, {
+      action: "tenant.health_fail",
+      tenantSlug: tenant.slug,
+      detail: message,
+    });
     return c.json({ ok: false, error: message }, 503);
   }
 });
@@ -509,6 +638,45 @@ app.get("/api/ops/tenants/:id/pesapal", async (c) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ error: message }, 502);
+  }
+});
+
+app.delete("/api/ops/tenants/:id", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const body = await c.req
+    .json<{ confirm_slug?: string }>()
+    .catch(() => ({} as { confirm_slug?: string }));
+
+  if (!body.confirm_slug) {
+    return c.json(
+      { error: "confirm_slug is required — must match tenant slug exactly" },
+      400
+    );
+  }
+
+  try {
+    const result = await deleteTenantCompletely(c.env, c.req.param("id"), {
+      confirmSlug: body.confirm_slug,
+    });
+    await logOpsAction(c.env, {
+      action: "tenant.delete",
+      tenantId: result.tenant.id,
+      tenantSlug: result.tenant.slug,
+    });
+    const failed = result.steps.filter((s) => !s.ok);
+    return c.json({
+      ok: failed.length === 0,
+      deleted: result.tenant,
+      steps: result.steps,
+      warnings: failed.length
+        ? failed.map((s) => `${s.step}: ${s.detail ?? "failed"}`)
+        : undefined,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, 400);
   }
 });
 

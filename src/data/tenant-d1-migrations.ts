@@ -19,5 +19,7 @@ export const TENANT_D1_STATEMENTS: string[] = [
   "CREATE TABLE `documents` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`title` text NOT NULL,\n\t`description` text,\n\t`file_url` text NOT NULL,\n\t`category` text DEFAULT 'general',\n\t`created_at` integer DEFAULT (strftime('%s', 'now'))\n);",
   "CREATE TABLE `bus_routes` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`route_name` text NOT NULL,\n\t`driver_name` text NOT NULL,\n\t`status` text DEFAULT 'on-time',\n\t`status_message` text,\n\t`updated_at` integer DEFAULT (strftime('%s', 'now'))\n);",
   "CREATE TABLE `knowledge_sources` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`source_id` text NOT NULL,\n\t`filename` text NOT NULL,\n\t`chunk_count` integer NOT NULL,\n\t`created_at` integer DEFAULT (strftime('%s', 'now'))\n);",
-  "CREATE UNIQUE INDEX `knowledge_sources_source_id_unique` ON `knowledge_sources` (`source_id`);"
+  "CREATE UNIQUE INDEX `knowledge_sources_source_id_unique` ON `knowledge_sources` (`source_id`);",
+  "CREATE TABLE `cms_pages` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,\n\t`slug` text NOT NULL,\n\t`title` text NOT NULL,\n\t`subtitle` text,\n\t`content` text NOT NULL,\n\t`updated_at` integer DEFAULT (strftime('%s', 'now'))\n);",
+  "CREATE UNIQUE INDEX `cms_pages_slug_unique` ON `cms_pages` (`slug`);"
 ];
