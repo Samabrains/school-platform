@@ -2,6 +2,24 @@
 
 Platform URL: **https://school-platform.ssebasamatha.workers.dev**
 
+## GitHub + Cloudflare (recommended)
+
+Repo: **https://github.com/Samabrains/school-platform** (branch `master`)
+
+### 1. Connect repo to Cloudflare (one-time)
+
+1. Open: **https://github.com/apps/cloudflare-workers-and-pages/installations/new**
+2. Organization **Samabrains** → add repository **`school-platform`** (in addition to `core-school-template`).
+3. In Cloudflare: [Workers & Pages](https://dash.cloudflare.com/17ac8e645ffc2337eceac4d16704fc96/workers-and-pages) → **Create** → **Worker** → **Connect to Git** → pick **Samabrains/school-platform**, branch **master**, build command `npm ci && npx wrangler deploy`, or use the GitHub Action below instead.
+
+### 2. GitHub Actions deploy (on push to `master`)
+
+Add repository secret **`CLOUDFLARE_API_TOKEN`** (Account + Workers + D1 Edit).
+
+Workflow: `.github/workflows/deploy.yml` — runs D1 migrations and `wrangler deploy`.
+
+Worker secrets (`PLATFORM_API_SECRET`, Pesapal, Brevo, etc.) stay on the worker via `npm run setup:secrets` — not in GitHub.
+
 ## One-time setup
 
 ```powershell

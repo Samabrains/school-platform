@@ -11,6 +11,11 @@ Control plane for School WaaS (Tier 2).
 | `/signup` | Self-serve signup form |
 | `/setup/:tenantId` | Provisioning progress |
 | `/subscribe?tenant=` | Pesapal checkout |
+| `/ops` | Internal ops dashboard (API secret) |
+
+### CI
+
+Push to **`master`** deploys via GitHub Actions (`.github/workflows/deploy.yml`). Requires `CLOUDFLARE_API_TOKEN` in repo secrets.
 
 ### API
 
