@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import { applyTenantD1Migrations } from "./tenant-d1";
+import { applyTenantD1Migrations, seedTenantAuthSettings } from "./tenant-d1";
 import { tenantPublicUrl } from "./tenant-url";
 import {
   bootstrapTenantSite,
@@ -145,6 +145,7 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
       CRON_SECRET: cronSecret,
       PLATFORM_AUTH_SECRET: env.PLATFORM_AUTH_SECRET ?? "",
       BREVO_API_KEY: env.BREVO_API_KEY ?? "",
+      ADMIN_EMAIL: String(refreshed.admin_email),
     },
     plainText: {
       ADMIN_EMAIL: String(refreshed.admin_email),
@@ -167,6 +168,11 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
       NEXT_PUBLIC_ENABLE_CAREERS: isStarter ? "false" : "true",
       NODE_VERSION: "22",
     },
+  });
+
+  await seedTenantAuthSettings(env, String(refreshed.d1_database_id), {
+    adminEmail: String(refreshed.admin_email),
+    jwtSecret,
   });
 }
 
@@ -192,8 +198,8 @@ export async function configurePagesProjectProduction(
   }
 
   const deploymentConfig = {
-    compatibility_date: "2024-09-23",
-    compatibility_flags: ["nodejs_compat"],
+    compatibility_date: "2025-04-01",
+    compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
     usage_model: "standard",
     d1_databases: {
       DB: { id: config.d1DatabaseId },

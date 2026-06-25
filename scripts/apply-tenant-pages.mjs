@@ -78,7 +78,7 @@ addSecret("JWT_SECRET", jwtSecret);
 addSecret("CRON_SECRET", cronSecret);
 addSecret("PLATFORM_AUTH_SECRET", secrets.PLATFORM_AUTH_SECRET ?? "");
 addSecret("BREVO_API_KEY", secrets.BREVO_API_KEY ?? "");
-addPlain("ADMIN_EMAIL", tenant.admin_email);
+addSecret("ADMIN_EMAIL", tenant.admin_email);
 addPlain("NEXT_PUBLIC_SCHOOL_EMAIL", tenant.admin_email);
 addPlain("NEXT_PUBLIC_ENABLE_ADMIN_PIN", "false");
 addPlain("PLATFORM_TENANT_ID", tenant.id);
@@ -101,8 +101,25 @@ addPlain("NODE_VERSION", "22");
 const body = {
   deployment_configs: {
     production: {
-      compatibility_date: "2024-09-23",
-      compatibility_flags: ["nodejs_compat"],
+      compatibility_date: "2025-04-01",
+      compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
+      usage_model: "standard",
+      d1_databases: { DB: { id: tenant.d1_database_id } },
+      r2_buckets: {
+        STORAGE: { name: `${slug}-r2-production` },
+        BACKUPS_STORAGE: { name: `${slug}-r2-backups-prod` },
+      },
+      vectorize_bindings: {
+        VECTORIZE_INDEX: { index_name: `${slug}-handbook-prod` },
+      },
+      ai_bindings: {
+        AI: {},
+      },
+      env_vars: envVars,
+    },
+    preview: {
+      compatibility_date: "2025-04-01",
+      compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
       usage_model: "standard",
       d1_databases: { DB: { id: tenant.d1_database_id } },
       r2_buckets: {
@@ -137,6 +154,13 @@ if (!data.success) {
   process.exit(1);
 }
 console.log("✓ Pages bindings and env applied");
+
+const authSql = `INSERT INTO settings (key, value) VALUES ('admin_email', '${tenant.admin_email.replace(/'/g, "''")}'), ('jwt_secret', '${jwtSecret.replace(/'/g, "''")}') ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = strftime('%s', 'now')`;
+execSync(
+  `npx wrangler d1 execute ${tenant.d1_database_id} --remote --command "${authSql}"`,
+  { cwd: ROOT, env, stdio: "inherit" }
+);
+console.log("✓ Tenant D1 auth settings seeded");
 
 const redeploy = process.argv.includes("--redeploy");
 if (redeploy) {
