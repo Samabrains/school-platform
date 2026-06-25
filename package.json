@@ -18,6 +18,7 @@
     "tenant:pages": "node scripts/apply-tenant-pages.mjs",
     "tenant:migrations:bundle": "node scripts/bundle-tenant-migrations.mjs",
     "rollout:tenants": "node scripts/rollout-tenants.mjs",
+    "connect:git": "node scripts/connect-worker-git.mjs",
     "db:create": "wrangler d1 create samabrains-platform-d1"
   },
   "dependencies": {

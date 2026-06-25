@@ -2,23 +2,53 @@
 
 Platform URL: **https://school-platform.ssebasamatha.workers.dev**
 
-## GitHub + Cloudflare (recommended)
+## GitHub + Cloudflare Workers Builds (recommended)
 
-Repo: **https://github.com/Samabrains/school-platform** (branch `master`)
+Repo: **https://github.com/Samabrains/school-platform** (branch **`master`**)
 
-### 1. Connect repo to Cloudflare (one-time)
+Cloudflare deploys the Worker when you push — no GitHub Actions required for deploy (Actions workflow is optional backup).
+
+### Step 1 — GitHub app (one-time)
 
 1. Open: **https://github.com/apps/cloudflare-workers-and-pages/installations/new**
-2. Organization **Samabrains** → add repository **`school-platform`** (in addition to `core-school-template`).
-3. In Cloudflare: [Workers & Pages](https://dash.cloudflare.com/17ac8e645ffc2337eceac4d16704fc96/workers-and-pages) → **Create** → **Worker** → **Connect to Git** → pick **Samabrains/school-platform**, branch **master**, build command `npm ci && npx wrangler deploy`, or use the GitHub Action below instead.
+2. Organization **Samabrains** → **Only select repositories** → check **`school-platform`** (and `core-school-template` if not already).
+3. Click **Install** or **Save**.
 
-### 2. GitHub Actions deploy (on push to `master`)
+### Step 2 — Connect repo in Cloudflare dashboard
 
-Add repository secret **`CLOUDFLARE_API_TOKEN`** (Account + Workers + D1 Edit).
+1. Open: **https://dash.cloudflare.com/17ac8e645ffc2337eceac4d16704fc96/workers-and-pages**
+2. Click Worker **`school-platform`** (not Pages).
+3. **Settings** → **Builds** → **Connect** → **GitHub**.
+4. Choose **Samabrains** / **`school-platform`**.
+5. Set:
 
-Workflow: `.github/workflows/deploy.yml` — runs D1 migrations and `wrangler deploy`.
+| Setting | Value |
+|---------|--------|
+| Production branch | `master` |
+| Build command | `npm ci && npx wrangler d1 migrations apply samabrains-platform-d1 --remote` |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/` |
 
-Worker secrets (`PLATFORM_API_SECRET`, Pesapal, Brevo, etc.) stay on the worker via `npm run setup:secrets` — not in GitHub.
+6. **API token** → **Create new token** (Cloudflare generates one for builds).
+7. **Save** → **Retry build** or push to `master`.
+
+Worker runtime secrets (`PLATFORM_API_SECRET`, Pesapal, Brevo) stay on the Worker from `npm run setup:secrets` — they are not in Git.
+
+### Step 3 — Push to deploy
+
+```powershell
+git push origin master
+```
+
+Each push to `master` triggers Cloudflare Workers Builds.
+
+### Optional: API script (needs user-scoped token)
+
+`npm run connect:git` uses the Builds API. Requires a **user** API token with **Workers Builds Configuration Edit** (account tokens like `cfat_…` do not work). Create at: https://dash.cloudflare.com/profile/api-tokens
+
+### Optional: GitHub Actions
+
+Add repository secret **`CLOUDFLARE_API_TOKEN`** if you also want `.github/workflows/deploy.yml` as a backup CI path.
 
 ## One-time setup
 
