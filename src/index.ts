@@ -9,7 +9,7 @@ import {
   isPaymentCompleted,
 } from "./services/pesapal";
 import { runTrialCron } from "./services/trial-cron";
-import { signupPageHtml, subscribePageHtml, setupPageHtml } from "./views/pages";
+import { signupPageHtml, subscribePageHtml, setupPageHtml, pricingPageHtml } from "./views/pages";
 import { opsDashboardHtml } from "./views/ops";
 import {
   getOpsMetrics,
@@ -42,6 +42,8 @@ app.get("/health", (c) =>
 app.get("/", (c) => c.redirect("/signup"));
 
 app.get("/signup", (c) => c.html(signupPageHtml(c.env)));
+
+app.get("/pricing", (c) => c.html(pricingPageHtml(c.env)));
 
 app.get("/setup/:tenantId", async (c) => {
   const status = await getSetupStatus(c.env, c.req.param("tenantId"));
