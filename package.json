@@ -12,6 +12,12 @@
     "setup": "node scripts/setup-local.mjs",
     "db:migrate:local": "wrangler d1 migrations apply samabrains-platform-d1 --local",
     "db:migrate:remote": "wrangler d1 migrations apply samabrains-platform-d1 --remote",
+    "tenant:complete": "node scripts/complete-tenant.mjs",
+    "tenant:delete": "node scripts/delete-tenant.mjs",
+    "provision:verify": "node scripts/verify-git-provision.mjs",
+    "tenant:pages": "node scripts/apply-tenant-pages.mjs",
+    "tenant:migrations:bundle": "node scripts/bundle-tenant-migrations.mjs",
+    "rollout:tenants": "node scripts/rollout-tenants.mjs",
     "db:create": "wrangler d1 create samabrains-platform-d1"
   },
   "dependencies": {

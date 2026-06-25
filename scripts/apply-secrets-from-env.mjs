@@ -36,10 +36,13 @@ function loadEnvFile(filePath) {
 }
 
 function putSecret(name, value) {
+  const env = { ...process.env };
+  delete env.CLOUDFLARE_API_TOKEN;
   execSync(`npx wrangler secret put ${name}`, {
     input: value,
     cwd: ROOT,
     stdio: ["pipe", "inherit", "inherit"],
+    env,
   });
   console.log(`✓ ${name}`);
 }

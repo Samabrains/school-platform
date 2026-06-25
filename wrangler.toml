@@ -16,6 +16,11 @@ PLATFORM_PUBLIC_URL = "https://school-platform.ssebasamatha.workers.dev"
 BREVO_SENDER_EMAIL = "noreply@samabrains.com"
 BREVO_SENDER_NAME = "SamaBrains School Platform"
 CLOUDFLARE_ACCOUNT_ID = "17ac8e645ffc2337eceac4d16704fc96"
+TEMPLATE_GITHUB_OWNER = "Samabrains"
+TEMPLATE_GITHUB_REPO = "core-school-template"
+TEMPLATE_GITHUB_BRANCH = "main"
+TEMPLATE_BUILD_COMMAND = "npm ci && npm run build && npm run pages:build"
+TEMPLATE_BUILD_OUTPUT_DIR = ".vercel/output/static"
 
 [triggers]
 crons = ["0 8 * * *"]

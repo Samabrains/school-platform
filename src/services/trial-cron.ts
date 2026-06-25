@@ -1,9 +1,25 @@
 import type { Env } from "../types";
+import { tryFinishProvisioning } from "./provision";
+import { sendWelcomeEmail } from "./signup";
 import { sendPlatformEmail } from "./email";
 import { getPlan, formatUgx } from "../config/plans";
 import type { Tenant } from "../types";
 
 export async function runTrialCron(env: Env) {
+  const { results: provisioning } = await env.DB.prepare(
+    "SELECT id FROM tenants WHERE status = 'provisioning'"
+  ).all<{ id: string }>();
+
+  for (const row of provisioning ?? []) {
+    try {
+      if (await tryFinishProvisioning(env, row.id)) {
+        await sendWelcomeEmail(env, row.id);
+      }
+    } catch (e) {
+      console.error("Provisioning resume failed:", row.id, e);
+    }
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const fiveDays = 5 * 24 * 60 * 60;
 

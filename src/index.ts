@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requirePlatformAuth } from "./auth";
 import type { Env, Tenant } from "./types";
-import { createSignupTenant, enqueueProvisioning, getSetupStatus } from "./services/signup";
+import { createSignupTenant, enqueueProvisioning, getSetupStatus, retryProvisioning } from "./services/signup";
 import { getPlan, formatUgx, PLANS } from "./config/plans";
 import {
   submitSubscriptionOrder,
@@ -10,6 +10,23 @@ import {
 } from "./services/pesapal";
 import { runTrialCron } from "./services/trial-cron";
 import { signupPageHtml, subscribePageHtml, setupPageHtml } from "./views/pages";
+import { opsDashboardHtml } from "./views/ops";
+import {
+  getOpsMetrics,
+  getOpsTenantDetail,
+  listOpsTenants,
+  listRecentDeployments,
+} from "./services/ops";
+import {
+  createDeployment,
+  finishDeployment,
+  getActiveTenantsForRollout,
+  getDeployment,
+  prepareTenantRollout,
+  recordTenantDeployment,
+  rolloutTenantViaGit,
+} from "./services/rollout";
+import { checkTenantHealth } from "./services/pages-git";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -33,6 +50,8 @@ app.get("/setup/:tenantId", async (c) => {
 });
 
 app.get("/subscribe", (c) => c.html(subscribePageHtml(c.env)));
+
+app.get("/ops", (c) => c.html(opsDashboardHtml(c.env)));
 
 app.get("/api/plans", (c) =>
   c.json({
@@ -75,6 +94,15 @@ app.get("/api/setup/:tenantId", async (c) => {
   const status = await getSetupStatus(c.env, c.req.param("tenantId"));
   if (!status) return c.json({ error: "Not found" }, 404);
   return c.json(status);
+});
+
+app.post("/api/setup/:tenantId/retry", async (c) => {
+  const tenantId = c.req.param("tenantId");
+  const result = await retryProvisioning(c.executionCtx, c.env, tenantId);
+  if ("error" in result && result.error) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json({ ok: true });
 });
 
 app.get("/api/public/billing/:tenantId", async (c) => {
@@ -372,15 +400,251 @@ app.patch("/api/tenants/:id/status", async (c) => {
   return c.json({ success: true, status });
 });
 
+// --- Ops dashboard API (Phase E) ---
+
+app.get("/api/ops/metrics", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+  return c.json(await getOpsMetrics(c.env));
+});
+
+app.get("/api/ops/tenants", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const tenants = await listOpsTenants(c.env, {
+    status: c.req.query("status"),
+    q: c.req.query("q"),
+  });
+  return c.json({ tenants });
+});
+
+app.get("/api/ops/tenants/:id", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const detail = await getOpsTenantDetail(c.env, c.req.param("id"));
+  if (!detail) return c.json({ error: "Tenant not found" }, 404);
+  return c.json(detail);
+});
+
+app.get("/api/ops/deployments", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+  const deployments = await listRecentDeployments(c.env);
+  return c.json({ deployments });
+});
+
+app.post("/api/ops/tenants/:id/retry", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const result = await retryProvisioning(
+    c.executionCtx,
+    c.env,
+    c.req.param("id")
+  );
+  if ("error" in result && result.error) {
+    return c.json({ error: result.error }, result.status);
+  }
+  return c.json({ ok: true });
+});
+
+app.post("/api/ops/tenants/:id/bindings", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  try {
+    await prepareTenantRollout(c.env, c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, 500);
+  }
+});
+
+app.post("/api/ops/tenants/:id/health", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT production_url, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+  )
+    .bind(c.req.param("id"), c.req.param("id"))
+    .first<{ production_url: string; slug: string }>();
+
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  try {
+    await checkTenantHealth(tenant.production_url);
+    return c.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ ok: false, error: message }, 503);
+  }
+});
+
+app.get("/api/ops/tenants/:id/pesapal", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT pesapal_order_tracking_id FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+  )
+    .bind(c.req.param("id"), c.req.param("id"))
+    .first<{ pesapal_order_tracking_id: string | null }>();
+
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  const trackingId = tenant.pesapal_order_tracking_id;
+  if (!trackingId) {
+    return c.json({ error: "No Pesapal order tracking ID on file" }, 404);
+  }
+
+  try {
+    const status = await getTransactionStatus(c.env, trackingId);
+    return c.json({ order_tracking_id: trackingId, status });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, 502);
+  }
+});
+
 app.get("/internal/tenants/active", async (c) => {
   const denied = requirePlatformAuth(c);
   if (denied) return denied;
 
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, slug, pages_project_name, d1_database_id, production_url, status FROM tenants WHERE status IN ('trialing', 'active') ORDER BY slug"
-  ).all();
+  const tenants = await getActiveTenantsForRollout(c.env);
+  return c.json({ tenants });
+});
 
-  return c.json({ tenants: results ?? [] });
+app.post("/internal/deployments", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const body = await c.req.json<{
+    git_sha: string;
+    triggered_by?: string;
+  }>();
+
+  if (!body.git_sha) {
+    return c.json({ error: "git_sha is required" }, 400);
+  }
+
+  const deployment = await createDeployment(
+    c.env,
+    body.git_sha,
+    body.triggered_by ?? "ci"
+  );
+
+  return c.json({ deployment }, 201);
+});
+
+app.get("/internal/deployments/:id", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const result = await getDeployment(c.env, c.req.param("id"));
+  if (!result) return c.json({ error: "Not found" }, 404);
+  return c.json(result);
+});
+
+app.patch("/internal/deployments/:id", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const body = await c.req.json<{ status: "completed" | "failed" }>();
+  if (!body.status) {
+    return c.json({ error: "status is required" }, 400);
+  }
+
+  await finishDeployment(c.env, c.req.param("id"), body.status);
+  return c.json({ ok: true });
+});
+
+app.post("/internal/tenants/:tenantId/prepare-rollout", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  try {
+    const result = await prepareTenantRollout(c.env, c.req.param("tenantId"));
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, 500);
+  }
+});
+
+app.post("/internal/deployments/:deploymentId/tenants/:tenantId/complete", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const body = await c.req.json<{
+    status: "running" | "completed" | "failed";
+    pages_deployment_id?: string;
+    error?: string;
+    git_sha?: string;
+  }>();
+
+  if (!body.status) {
+    return c.json({ error: "status is required" }, 400);
+  }
+
+  await recordTenantDeployment(
+    c.env,
+    c.req.param("deploymentId"),
+    c.req.param("tenantId"),
+    {
+      status: body.status,
+      pagesDeploymentId: body.pages_deployment_id ?? null,
+      error: body.error ?? null,
+      gitSha: body.git_sha ?? null,
+    }
+  );
+
+  return c.json({ ok: true });
+});
+
+app.post("/internal/deployments/:deploymentId/tenants/:tenantId/git-rollout", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const deployment = await getDeployment(c.env, c.req.param("deploymentId"));
+  if (!deployment) return c.json({ error: "Deployment not found" }, 404);
+
+  const body = (await c.req
+    .json<{ max_wait_ms?: number }>()
+    .catch(() => ({}))) as { max_wait_ms?: number };
+  const result = await rolloutTenantViaGit(
+    c.env,
+    c.req.param("deploymentId"),
+    c.req.param("tenantId"),
+    deployment.deployment.git_sha,
+    body.max_wait_ms ?? 600_000
+  );
+
+  return c.json(result, result.ok ? 200 : 500);
+});
+
+app.post("/internal/tenants/:tenantId/health", async (c) => {
+  const denied = requirePlatformAuth(c);
+  if (denied) return denied;
+
+  const tenant = await c.env.DB.prepare(
+    "SELECT production_url, slug FROM tenants WHERE id = ? OR slug = ? LIMIT 1"
+  )
+    .bind(c.req.param("tenantId"), c.req.param("tenantId"))
+    .first<{ production_url: string; slug: string }>();
+
+  if (!tenant) return c.json({ error: "Tenant not found" }, 404);
+
+  try {
+    await checkTenantHealth(tenant.production_url);
+    return c.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ ok: false, error: message }, 503);
+  }
 });
 
 export default {

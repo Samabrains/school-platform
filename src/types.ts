@@ -28,6 +28,7 @@ export interface Tenant {
   r2_bucket: string | null;
   vectorize_index: string | null;
   custom_domain: string | null;
+  cron_secret?: string | null;
   created_at: number;
   provisioned_at: number | null;
   suspended_at: number | null;
@@ -48,4 +49,9 @@ export interface Env {
   BREVO_SENDER_NAME?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
+  TEMPLATE_GITHUB_OWNER?: string;
+  TEMPLATE_GITHUB_REPO?: string;
+  TEMPLATE_GITHUB_BRANCH?: string;
+  TEMPLATE_BUILD_COMMAND?: string;
+  TEMPLATE_BUILD_OUTPUT_DIR?: string;
 }

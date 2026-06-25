@@ -1,6 +1,12 @@
 import type { Env, Tenant } from "../types";
-import { slugify, runProvisioningPipeline } from "../services/provision";
+import {
+  isValidSlug,
+  normalizeSlug,
+  runProvisioningPipeline,
+  tryFinishProvisioning,
+} from "../services/provision";
 import { getPlan } from "../config/plans";
+import { pagesDevUrl } from "./tenant-d1";
 import { createAdminMagicLinkToken, buildMagicLinkUrl } from "../services/magic-link";
 import { sendPlatformEmail } from "../services/email";
 
@@ -16,11 +22,19 @@ export async function createSignupTenant(
     plan?: string;
   }
 ) {
-  const slug = body.slug?.trim() || slugify(body.school_name);
+  const slug = normalizeSlug(body.slug?.trim() || body.school_name);
   const plan = body.plan ?? "starter";
 
   if (!slug || !body.school_name || !body.admin_email) {
     return { error: "school_name, admin_email required", status: 400 as const };
+  }
+
+  if (!isValidSlug(slug)) {
+    return {
+      error:
+        "Site address must be 3–48 characters: lowercase letters, numbers, and hyphens only",
+      status: 400 as const,
+    };
   }
 
   if (!getPlan(plan)) {
@@ -50,7 +64,7 @@ export async function createSignupTenant(
     trial_ends_at: now + TRIAL_SECONDS,
     pesapal_account_number: `ten_${slug}`,
     pages_project_name: slug,
-    production_url: `https://${slug}.samabrains.com`,
+    production_url: `https://${slug}.pages.dev`,
     d1_database_id: "",
     created_at: now,
   };
@@ -90,6 +104,22 @@ export async function sendWelcomeEmail(env: Env, tenantId: string) {
 
   if (!tenant || !env.PLATFORM_AUTH_SECRET) return;
 
+  const alreadySent = await env.DB.prepare(
+    "SELECT id FROM notification_log WHERE tenant_id = ? AND type = 'welcome'"
+  )
+    .bind(tenantId)
+    .first();
+
+  if (alreadySent) return;
+
+  const siteUrl = pagesDevUrl(tenant.slug);
+  if (tenant.production_url !== siteUrl) {
+    await env.DB.prepare("UPDATE tenants SET production_url = ? WHERE id = ?")
+      .bind(siteUrl, tenantId)
+      .run();
+    tenant.production_url = siteUrl;
+  }
+
   const token = await createAdminMagicLinkToken(env.PLATFORM_AUTH_SECRET, {
     tenantId: tenant.id,
     email: tenant.admin_email,
@@ -112,6 +142,12 @@ export async function sendWelcomeEmail(env: Env, tenantId: string) {
       <p>Your site: <a href="${tenant.production_url}">${tenant.production_url}</a></p>
     `,
   });
+
+  await env.DB.prepare(
+    "INSERT INTO notification_log (id, tenant_id, type, sent_at) VALUES (?, ?, 'welcome', ?)"
+  )
+    .bind(crypto.randomUUID(), tenantId, Math.floor(Date.now() / 1000))
+    .run();
 }
 
 export function enqueueProvisioning(
@@ -119,24 +155,62 @@ export function enqueueProvisioning(
   env: Env,
   tenantId: string
 ) {
-  ctx.waitUntil(
-    (async () => {
-      try {
-        await runProvisioningPipeline(env, tenantId);
-        await sendWelcomeEmail(env, tenantId);
-      } catch (error) {
-        console.error("Provisioning failed:", tenantId, error);
-        await env.DB.prepare("UPDATE tenants SET status = ? WHERE id = ?")
-          .bind("draft", tenantId)
-          .run();
-      }
-    })()
-  );
+  ctx.waitUntil(runProvisioningJob(env, tenantId));
+}
+
+export async function retryProvisioning(
+  ctx: ExecutionContext,
+  env: Env,
+  tenantId: string
+) {
+  const tenant = await env.DB.prepare(
+    "SELECT id, status FROM tenants WHERE id = ? OR slug = ?"
+  )
+    .bind(tenantId, tenantId)
+    .first<{ id: string; status: string }>();
+
+  if (!tenant) {
+    return { error: "Not found", status: 404 as const };
+  }
+
+  if (tenant.status === "trialing" || tenant.status === "active") {
+    return { error: "Already provisioned", status: 400 as const };
+  }
+
+  await env.DB.prepare("UPDATE tenants SET status = ? WHERE id = ?")
+    .bind("provisioning", tenant.id)
+    .run();
+
+  ctx.waitUntil(runProvisioningJob(env, tenant.id));
+  return { ok: true as const };
+}
+
+async function runProvisioningJob(env: Env, tenantId: string) {
+  try {
+    const result = await runProvisioningPipeline(env, tenantId);
+    if (result === "complete") {
+      await sendWelcomeEmail(env, tenantId);
+      return;
+    }
+    if (await tryFinishProvisioning(env, tenantId)) {
+      await sendWelcomeEmail(env, tenantId);
+    }
+  } catch (error) {
+    console.error("Provisioning failed:", tenantId, error);
+    await env.DB.prepare("UPDATE tenants SET status = ? WHERE id = ?")
+      .bind("draft", tenantId)
+      .run();
+  }
 }
 
 export async function getSetupStatus(env: Env, tenantId: string) {
+  const finished = await tryFinishProvisioning(env, tenantId);
+  if (finished) {
+    await sendWelcomeEmail(env, tenantId);
+  }
+
   const tenant = await env.DB.prepare(
-    "SELECT id, slug, school_name, status, production_url, trial_ends_at, billing_status FROM tenants WHERE id = ? OR slug = ?"
+    "SELECT id, slug, school_name, admin_email, status, production_url, trial_ends_at, billing_status FROM tenants WHERE id = ? OR slug = ?"
   )
     .bind(tenantId, tenantId)
     .first<Tenant>();
