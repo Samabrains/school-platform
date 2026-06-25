@@ -1,0 +1,27 @@
+name = "school-platform"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+account_id = "17ac8e645ffc2337eceac4d16704fc96"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "samabrains-platform-d1"
+database_id = "3b7ce7de-2b35-4b51-ac70-9daa4222d844"
+migrations_dir = "migrations"
+
+[vars]
+BILLING_CURRENCY = "UGX"
+PESAPAL_ENVIRONMENT = "live"
+PLATFORM_PUBLIC_URL = "https://school-platform.ssebasamatha.workers.dev"
+BREVO_SENDER_EMAIL = "noreply@samabrains.com"
+BREVO_SENDER_NAME = "SamaBrains School Platform"
+CLOUDFLARE_ACCOUNT_ID = "17ac8e645ffc2337eceac4d16704fc96"
+
+[triggers]
+crons = ["0 8 * * *"]
+
+# Custom domain requires samabrains.com zone on this account.
+# After DNS is configured: uncomment and set PLATFORM_PUBLIC_URL accordingly.
+# [[routes]]
+# pattern = "platform.samabrains.com"
+# custom_domain = true

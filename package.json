@@ -1,0 +1,26 @@
+{
+  "name": "school-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "setup:auth": "node scripts/init-auth-secrets.mjs",
+    "setup:secrets": "node scripts/apply-secrets-from-env.mjs",
+    "setup:ipn": "node scripts/register-pesapal-ipn.mjs",
+    "setup": "node scripts/setup-local.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply samabrains-platform-d1 --local",
+    "db:migrate:remote": "wrangler d1 migrations apply samabrains-platform-d1 --remote",
+    "db:create": "wrangler d1 create samabrains-platform-d1"
+  },
+  "dependencies": {
+    "hono": "^4.7.4",
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250317.0",
+    "typescript": "^5.8.2",
+    "wrangler": "^4.100.0"
+  }
+}

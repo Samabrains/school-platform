@@ -1,0 +1,18 @@
+{
+  "id": "ten_lincoln-academy",
+  "slug": "lincoln-academy",
+  "school_name": "Lincoln Academy",
+  "admin_email": "office@lincoln.academy",
+  "status": "active",
+  "plan": "pro",
+  "billing_status": "current",
+  "trial_ends_at": null,
+  "pesapal_account_number": "ten_lincoln-academy",
+  "pages_project_name": "lincoln-academy",
+  "production_url": "https://lincoln-academy.pages.dev",
+  "d1_database_id": "9cf36e53-e861-4bdc-9293-ba0f05d2d08d",
+  "r2_bucket": "lincoln-academy-r2-production",
+  "vectorize_index": "lincoln-academy-handbook-prod",
+  "created_at": 1717200000,
+  "provisioned_at": 1717200000
+}
