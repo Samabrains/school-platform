@@ -163,9 +163,10 @@ export async function applyTenantPagesConfig(env: Env, tenantId: string) {
       NEXT_PUBLIC_TAGLINE: tagline,
       NEXT_PUBLIC_PRIMARY_COLOR: primaryColor,
       NEXT_PUBLIC_SECONDARY_COLOR: secondaryColor,
-      NEXT_PUBLIC_ENABLE_CHATBOT: "true",
-      NEXT_PUBLIC_ENABLE_ALUMNI_PORTAL: isStarter ? "false" : "true",
-      NEXT_PUBLIC_ENABLE_CAREERS: isStarter ? "false" : "true",
+      NEXT_PUBLIC_ENABLE_ADMISSIONS: "true",
+      NEXT_PUBLIC_ENABLE_CHATBOT: "false",
+      NEXT_PUBLIC_ENABLE_ALUMNI_PORTAL: "false",
+      NEXT_PUBLIC_ENABLE_CAREERS: "false",
       NODE_VERSION: "22",
     },
   });
