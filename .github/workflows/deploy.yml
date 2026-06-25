@@ -22,10 +22,15 @@ jobs:
 
       - run: npm ci
 
-      - name: Bundle tenant D1 migrations from template
-        run: |
-          git clone --depth 1 https://github.com/Samabrains/core-school-template.git ../core-school-template
-          TEMPLATE_ROOT=../core-school-template node scripts/bundle-tenant-migrations.mjs
+      - name: Checkout core-school-template (for migration bundle)
+        uses: actions/checkout@v4
+        with:
+          repository: Samabrains/core-school-template
+          path: core-school-template
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - name: Bundle tenant D1 migrations
+        run: TEMPLATE_ROOT=./core-school-template node scripts/bundle-tenant-migrations.mjs
 
       - name: Apply platform D1 migrations
         env:
